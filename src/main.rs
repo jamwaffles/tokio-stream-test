@@ -1,5 +1,7 @@
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 use futures::future::Future;
 use futures::{IntoFuture, Stream};
@@ -11,6 +13,7 @@ use lapin_futures::consumer::Consumer;
 use lapin_futures::types::FieldTable;
 use std::io;
 use std::net::SocketAddr;
+use std::str;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -19,6 +22,23 @@ use std::thread::JoinHandle;
 use tokio;
 use tokio::net::TcpStream;
 use tokio::runtime::current_thread::block_on_all;
+
+#[derive(Deserialize, Debug)]
+struct Event1 {
+    event_1: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Event2 {
+    event_2: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+enum Events {
+    Event1(Event1),
+    Event2(Event2),
+}
 
 fn connect(
     uri: SocketAddr,
@@ -117,8 +137,8 @@ fn create_consumer(
 }
 
 struct Thingy {
-    tx: Sender<i32>,
-    rx: Receiver<i32>,
+    tx: Sender<Events>,
+    rx: Receiver<Events>,
 }
 
 impl Thingy {
@@ -144,7 +164,11 @@ impl Thingy {
                     .for_each(move |message| {
                         println!("Event!");
 
-                        tx.send(1i32).expect("Failed to send");
+                        let payload = str::from_utf8(&message.data).unwrap();
+                        let data: Events = serde_json::from_str(payload).unwrap();
+                        trace!("Received message {:?}", data);
+
+                        tx.send(data).expect("Failed to send event on channel");
 
                         channel.basic_ack(message.delivery_tag, false)
                     })
@@ -167,7 +191,7 @@ impl Thingy {
 
         let join_handle = thread::spawn(move || {
             while let Ok(n) = rx.recv() {
-                println!("Received {}", n);
+                println!("Received {:?}", n);
             }
         });
 
