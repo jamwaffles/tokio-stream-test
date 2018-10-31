@@ -119,18 +119,13 @@ fn create_consumer(
 struct Thingy {
     tx: Sender<i32>,
     rx: Receiver<i32>,
-    tx_handles: Vec<JoinHandle<()>>,
 }
 
 impl Thingy {
     pub fn new() -> Self {
         let (tx, rx) = channel();
 
-        Self {
-            tx,
-            rx,
-            tx_handles: Vec::new(),
-        }
+        Self { tx, rx }
     }
 
     pub fn register_listener(&mut self, queue_name: String) {
@@ -162,16 +157,12 @@ impl Thingy {
 
         trace!("Before sender spawn");
 
-        let handle = thread::spawn(move || {
+        thread::spawn(move || {
             block_on_all(fut).expect("Block failed");
         });
-
-        self.tx_handles.push(handle);
     }
 
     pub fn run(self) -> JoinHandle<()> {
-        trace!("Running {} handles", self.tx_handles.len());
-
         let rx = self.rx;
 
         let join_handle = thread::spawn(move || {
